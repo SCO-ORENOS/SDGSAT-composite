@@ -1,0 +1,7 @@
+sdgsat-composite:
+channels:
+  - conda-forge
+dependencies:
+  - geopandas=1.1.1
+  - rasterio=1.4.3
+  - pyyaml=6.0.2
