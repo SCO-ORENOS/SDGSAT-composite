@@ -1,4 +1,5 @@
 import argparse
+import shutil
 import warnings
 from pathlib import Path
 
@@ -108,6 +109,9 @@ def main(config_file: str):
         # Create composite main dir if not exists
         output_dir = Path(config["composites_dir"])
         output_dir.mkdir(exist_ok=True, parents=True)
+
+        # Copy config in output directory
+        shutil.copy(config_file, config["composites_dir"])
 
         # Get images
         img_dir = Path(config["img_dir"])
