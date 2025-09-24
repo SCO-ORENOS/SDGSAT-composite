@@ -1,7 +1,7 @@
 # SDGSAT products main directory
 img_dir: /home/clhenry/work/latelescop/projects/ORENOS/livraison/21082025
 
-# SDGSAT composites:
+# SDGSAT composites (anual):
 composites:
   SDGSAT_COMPOSITE_2022:
     - KX10_GIU_20220121_E3.90_N46.44_202200113979_L4A_B
@@ -21,5 +21,28 @@ composites:
     - KX10_GIU_20250326_E4.92_N46.50_202500032777_L4A_B
 
 
+# SDGSAT composites (September-to-September):
+# composites:
+#   SDGSAT_COMPOSITE_Sep_2021_Sep_2022:
+#     - KX10_GIU_20220121_E3.90_N46.44_202200113979_L4A_B
+#     - KX10_GIU_20220306_E7.82_N46.48_202200100550_L4A_A
+#     - KX10_GIU_20220322_E7.94_N45.22_202200104789_L4A_A
+
+#   SDGSAT_COMPOSITE_Sep_2022_Sep_2023:
+#     - KX10_GIU_20230405_E7.09_N46.15_202300274736_L4A_A
+
+#   SDGSAT_COMPOSITE_Sep_2023_Sep_2024:
+#     - KX10_GIU_20230925_E5.76_N44.72_202300403048_L4A_B
+#     - KX10_GIU_20231001_E7.33_N46.81_202300406028_L4A_A
+#     - KX10_GIU_20231006_E5.97_N44.97_202300407305_L4A_B
+#     - KX10_GIU_20240129
+#     - KX10_GIU_20240307_E7.98_N47.11_202400027731_L4A_A
+
+#   SDGSAT_COMPOSITE_Sep_2024_Sep_2025:
+#     - KX10_GIU_20241215
+#     - KX10_GIU_20250305
+#     - KX10_GIU_20250326_E4.92_N46.50_202500032777_L4A_B
+
+
 # Where composite will be saved
-composites_dir: /home/clhenry/work/latelescop/projects/ORENOS/composites/anual_composites
+composites_dir: /home/clhenry/work/latelescop/projects/ORENOS/production/composites/anual_composites_q95

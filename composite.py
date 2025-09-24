@@ -4,12 +4,14 @@ import warnings
 from pathlib import Path
 
 import geopandas as gpd
+import numba as nb
 import numpy as np
 import pandas as pd
 import rasterio
-import shapely
+import rasterio.features as features
+import shapely.geometry
+import shapely.ops
 import yaml
-from rasterio import features
 
 with warnings.catch_warnings():
     warnings.simplefilter("ignore", category=RuntimeWarning)
@@ -20,8 +22,64 @@ NODATA = 0
 CRS = 2154
 
 
-def create_composite(img_paths: list, composite_path: Path):
+@nb.njit
+def _nanpercentile_1d(arr, q):
+    """Custom function to compute the q-th percentile of a 1D array ignoring NaN using Numba."""
+
+    # Check if all value are NaN
+    n = arr.size
+    buf = np.empty(n, dtype=arr.dtype)
+    k = 0
+    for i in range(n):
+        v = arr[i]
+        if v == v:  # not NaN
+            buf[k] = v
+            k += 1
+    if k == 0:
+        return np.nan
+
+    # Compute percentile
+    buf = buf[:k]
+    buf.sort()
+    idx = (q / 100.0) * (k - 1)
+    i = int(np.floor(idx))
+    j = int(np.ceil(idx))
+    if i == j:
+        return buf[i]
+    return buf[i] * (j - idx) + buf[j] * (idx - i)
+
+
+@nb.njit(parallel=True)
+def nanpercentile_3d_axis0(arr, q):
+    """Custom function to compute the q-th percentile of a 3D array along the 0-axis ignoring NaN using Numba."""
+
+    if arr.ndim != 3:
+        raise ValueError("Only 3D arrays supported")
+
+    out = np.empty((arr.shape[1], arr.shape[2]), dtype=arr.dtype)
+    for j in nb.prange(arr.shape[1]):
+        for k in range(arr.shape[2]):
+            out[j, k] = _nanpercentile_1d(arr[:, j, k], q)
+    return out
+
+
+@nb.njit()
+def nanpercentile_4d_axis0(arr, q):
+    """Custom function to compute the q-th percentile of a 4D array along the 0-axis ignoring NaN using Numba."""
+    d, b, w, h = arr.shape
+    out = np.empty((b, w, h), dtype=arr.dtype)
+
+    for bi in range(b):
+        out[bi] = nanpercentile_3d_axis0(arr[:, bi], q)
+
+    return out
+
+
+def create_composite(img_paths: list, composite_path: Path, mode="mean"):
     """Create composite"""
+
+    if mode not in ["mean", "q95"]:
+        raise ValueError("Mode must be 'mean' or 'q95'")
 
     # Init a dataframe to hold the composite metadata
     gdf = gpd.GeoDataFrame(columns=["name", "date", "geometry"], crs=CRS)
@@ -55,19 +113,16 @@ def create_composite(img_paths: list, composite_path: Path):
         with rasterio.open(path) as src:
             transform = src.transform
             img = src.read()
-            img = np.transpose(img, (1, 2, 0))
-
-        img = np.atleast_3d(img)
-        nodata_mask = (img.sum(axis=2) == 0).astype(bool)
+            mask = src.read_masks()
+            nodata_mask = mask.astype(bool)
 
         # Mask nodata
-        img = img.astype(np.float32)  # Use float16 to allow NaN
-        img[nodata_mask] = np.nan
+        img = img.astype(np.float32)  # Use float32 to allow NaN
+        img[~nodata_mask] = np.nan
 
         imgs.append(img)
 
         # Vectorize nodata_mask
-        nodata_mask = ~nodata_mask
         nodata_mask = nodata_mask.astype(np.uint8)
         results = features.shapes(nodata_mask, transform=transform)
         geoms = [shapely.geometry.shape(geom) for geom, val in results if val == 1]
@@ -87,21 +142,22 @@ def create_composite(img_paths: list, composite_path: Path):
     with warnings.catch_warnings():
         # Ignore mean of empty slice warning as it is expected when all images are nodata
         warnings.simplefilter("ignore", category=RuntimeWarning)
-        composite = np.nanmean(stack, axis=0)
 
-    composite = np.atleast_3d(composite)
-    composite = np.nan_to_num(composite, nan=0).astype(DTYPE)
+        if mode == "mean":
+            composite = np.nanmean(stack, axis=0)
+        elif mode == "q95":
+            composite = nanpercentile_4d_axis0(stack, q=95)
+
+    composite = np.nan_to_num(composite, nan=NODATA).astype(DTYPE)
 
     # Write the composite
     with rasterio.open(composite_path, "w", **profile) as dst:
-        for bn in range(nbands):
-            dst.write(composite[:, :, bn], bn + 1)
-            dst.update_tags(bn + 1, nodata=NODATA)
+        dst.write(composite)
 
     gdf.to_file(composite_path.parent / f"{composite_path.stem}_metadata.gpkg")
 
 
-def main(config_file: str):
+def main(config_file: str, mode: str = "mean"):
     """Main process"""
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
@@ -136,7 +192,7 @@ def main(config_file: str):
                 ]
 
                 composite_path = composite_dir / f"{composite}_{img_type}.tif"
-                create_composite(composite_img_paths, composite_path)
+                create_composite(composite_img_paths, composite_path, mode=mode)
 
 
 if __name__ == "__main__":
@@ -148,6 +204,9 @@ if __name__ == "__main__":
         type=str,
         help="Path to the configuration file containing composite definitions.",
     )
+    parser.add_argument(
+        "-mode", type=str, default="mean", help="Composite mode: 'mean' or 'max'"
+    )
     args = parser.parse_args()
 
-    main(args.config_file)
+    main(args.config_file, mode=args.mode)
